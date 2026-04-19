@@ -1995,8 +1995,8 @@ class NeptunAPI:
     def get_unipoll_url_for_report(self, report_id: str) -> dict:
         return self._data(self._get("Questionnaires/GetUnipollURLForUnipollReportForView", params={"id": report_id}))
 
-    def get_unipoll_url_with_token_for_fill(self, questionnaire_id: str) -> dict:
-        return self._data(self._get("Questionnaires/GetUnipollURLWithTokenForFill", params={"id": questionnaire_id}))
+    def get_unipoll_url_with_token_for_fill(self, unipoll_report_id: str) -> dict:
+        return self._data(self._get("Questionnaires/GetUnipollURLWithTokenForFill", params={"unipollReportId": unipoll_report_id}))
 
     def is_unipoll_report_url_empty(self) -> dict:
         return self._data(self._get("Questionnaires/IsUnipollReportUrlEmpty"))
