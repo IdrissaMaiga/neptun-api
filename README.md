@@ -7,14 +7,17 @@ Built and tested against [Obuda University](https://neptun.uni-obuda.hu), but sh
 ## Installation
 
 ```bash
-pip install -e .
+pip install -e .                   # core API wrapper
+pip install -e ".[survey]"         # + automated survey filler
+pip install -e ".[all]"            # + survey + dev/test tools
 ```
 
-Or just copy the `neptun_api/` folder into your project.
+For survey auto-fill, also run after install:
+```bash
+python -m playwright install chromium
+```
 
 **Requirements:** Python 3.11+, `requests`
-
-For survey auto-fill, also install: `pip install playwright && python -m playwright install chromium`
 
 ## Quick Start
 
