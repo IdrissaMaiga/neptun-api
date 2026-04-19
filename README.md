@@ -14,6 +14,8 @@ Or just copy the `neptun_api/` folder into your project.
 
 **Requirements:** Python 3.11+, `requests`
 
+For survey auto-fill, also install: `pip install playwright && python -m playwright install chromium`
+
 ## Quick Start
 
 ```python
@@ -44,6 +46,10 @@ events = api.get_calendar_events(datetime(2025, 9, 1), datetime(2026, 1, 31))
 
 # Finances
 impositions = api.get_financial_impositions()
+
+# Auto-fill all pending semester surveys (rating 1-5)
+from neptun_api import fill_all_surveys
+results = fill_all_surveys(api, rating=5)
 ```
 
 ## What's Covered
@@ -64,7 +70,7 @@ impositions = api.get_financial_impositions()
 | **Request Forms** | 62 | Submit, track, attachments, judgements |
 | **Student Card** | 12 | Claims, address, status |
 | **Tasks** | 28 | Assignments, documentation, deadlines |
-| **Questionnaires** | 17 | Fill out, view results |
+| **Questionnaires** | 17 + auto-fill | List, fill out via browser automation, view results |
 | **Consultation** | 12 | Appointments, sign up, drop |
 | **E-Materials** | 28 | Course materials, downloads |
 | **Online Occasions** | 24 | Virtual classes, Webex/Teams links |
@@ -80,6 +86,33 @@ impositions = api.get_financial_impositions()
 | **And more...** | | Specializations, modules, registry sheets, legal remedies |
 
 **Total: 1,100+ methods**
+
+## Auto-Fill Semester Surveys
+
+Neptun's end-of-semester opinion surveys (Unipoll) can be filled automatically using browser automation. The filler handles both English and Hungarian survey interfaces.
+
+```python
+from neptun_api import NeptunAPI, fill_all_surveys
+
+api = NeptunAPI("code", "password", base_url="https://neptun.uni-obuda.hu/ujhallgato/api/")
+api.authenticate()
+
+# Fill all pending surveys with 5/5 rating
+results = fill_all_surveys(api, rating=5)
+
+# Custom rating (1-5) and optional text comment
+results = fill_all_surveys(api, rating=4, text_answer="Great course!")
+
+# Dry run — fills forms but doesn't submit
+results = fill_all_surveys(api, rating=5, dry_run=True)
+
+# Show browser window (useful for debugging)
+results = fill_all_surveys(api, rating=5, headless=False)
+```
+
+Each result dict contains `subject`, `course`, and `status` (`"submitted"`, `"failed"`, or `"error"`).
+
+> **Requires:** `pip install playwright && python -m playwright install chromium`
 
 ## Authentication
 
@@ -147,6 +180,7 @@ python test_live_comprehensive.py
 neptun_api/
   __init__.py        # Public exports
   client.py          # API wrapper (1,100+ methods)
+  survey_filler.py   # Automated Unipoll survey filler (Playwright)
   models.py          # Dataclasses for common response types
   exceptions.py      # NeptunAuthError, NeptunRequestError
 tests/
