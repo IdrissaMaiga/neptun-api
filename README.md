@@ -117,6 +117,72 @@ Each result dict contains `subject`, `course`, and `status` (`"submitted"`, `"fa
 
 > **Requires:** `pip install playwright && python -m playwright install chromium`
 
+## MCP Server
+
+Run Neptun as an MCP server so any MCP-compatible AI (Claude Desktop, Claude Code, Cursor, etc.) can access your university data.
+
+**Stdio** (local — Claude Desktop / Claude Code):
+```bash
+pip install -e ".[mcp]"
+python -m neptun_api --username YOUR_CODE --password YOUR_PASS
+```
+
+**SSE** (remote / port-forwarded):
+```bash
+python -m neptun_api --username YOUR_CODE --password YOUR_PASS --transport sse --port 8000
+```
+
+**Streamable HTTP**:
+```bash
+python -m neptun_api --username YOUR_CODE --password YOUR_PASS --transport streamable-http --port 8000
+```
+
+Or use environment variables:
+```bash
+export NEPTUN_USERNAME=YOUR_CODE
+export NEPTUN_PASSWORD=YOUR_PASS
+export NEPTUN_BASE_URL=https://neptun.uni-obuda.hu/ujhallgato/api/
+python -m neptun_api --transport sse --port 8000
+```
+
+### Claude Desktop config
+
+Add to `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "neptun": {
+      "command": "python",
+      "args": ["-m", "neptun_api"],
+      "env": {
+        "NEPTUN_USERNAME": "YOUR_CODE",
+        "NEPTUN_PASSWORD": "YOUR_PASS"
+      }
+    }
+  }
+}
+```
+
+### Available MCP Tools (26)
+
+| Tool | Description |
+|---|---|
+| `get_student_info` | Student profile, neptun code, training |
+| `get_dashboard_data` | GPA, credit progress, unread messages |
+| `get_term_averages` | GPA and credit index per semester |
+| `get_taken_subjects` | Subjects taken in a term |
+| `get_exam_list` | Available exams |
+| `register_for_exam` | Register for an exam |
+| `get_received_messages` | Read inbox messages |
+| `send_message` | Send a message |
+| `get_calendar_events` | Calendar events by date range |
+| `get_financial_impositions` | Tuition and fee obligations |
+| `get_pending_surveys` | Unfilled semester surveys |
+| `fill_all_surveys` | Auto-fill all surveys (Playwright) |
+| `call_method` | Call any of the 1,100+ API methods by name |
+| `list_methods` | Search/discover all available methods |
+| *...and 12 more* | Timetable, courses, documents, registration |
+
 ## Authentication
 
 The wrapper uses JWT Bearer tokens. Authentication is automatic — if your token expires mid-session, the client re-authenticates and retries transparently.
@@ -182,7 +248,9 @@ python test_live_comprehensive.py
 ```
 neptun_api/
   __init__.py        # Public exports
+  __main__.py        # Entry point for python -m neptun_api
   client.py          # API wrapper (1,100+ methods)
+  mcp_server.py      # MCP server (stdio / SSE / streamable-http)
   survey_filler.py   # Automated Unipoll survey filler (Playwright)
   models.py          # Dataclasses for common response types
   exceptions.py      # NeptunAuthError, NeptunRequestError
