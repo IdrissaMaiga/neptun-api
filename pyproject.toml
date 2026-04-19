@@ -6,11 +6,37 @@ build-backend = "setuptools.build_meta"
 name = "neptun-api"
 version = "0.1.0"
 description = "The most complete Python wrapper for the Hungarian Neptun university system API"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
+authors = [{ name = "IdrissaMaiga" }]
+keywords = ["neptun", "university", "api", "hungary", "wrapper"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Education",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = ["requests>=2.28"]
 
 [project.optional-dependencies]
+survey = ["playwright>=1.40"]
 dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+all = ["playwright>=1.40", "pytest>=7.0", "pytest-cov>=4.0"]
+
+[project.urls]
+Homepage = "https://github.com/IdrissaMaiga/neptun-api"
+Repository = "https://github.com/IdrissaMaiga/neptun-api"
+Issues = "https://github.com/IdrissaMaiga/neptun-api/issues"
+
+[tool.setuptools.packages.find]
+include = ["neptun_api*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
