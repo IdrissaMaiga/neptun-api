@@ -7,3 +7,7 @@ dist/
 build/
 *.har
 .claude/
+
+# Personal one-off docs (contain real Neptun code / transcript / personal plans)
+docs/my_university_status.md
+docs/masters_scholarship_guide.md

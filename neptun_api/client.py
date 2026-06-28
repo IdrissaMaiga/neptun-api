@@ -2,24 +2,28 @@ import requests
 import warnings
 from datetime import datetime
 
-from .exceptions import NeptunAPIError, NeptunAuthError, NeptunRequestError
+from .exceptions import NeptunAuthError, NeptunRequestError
 
 OBUDA_BASE = "https://neptun.uni-obuda.hu/ujhallgato/api/"
 
 
 class NeptunAPI:
-    def __init__(self, username: str, password: str, base_url: str = OBUDA_BASE, lcid: int = 1038):
+    def __init__(self, username: str, password: str, base_url: str = OBUDA_BASE,
+                 lcid: int = 1038, verify_ssl: bool = True):
         self.username = username
         self.password = password
         self.base_url = base_url.rstrip("/") + "/"
         self.lcid = lcid
         self.session = requests.Session()
-        self.session.verify = False
+        # TLS verification is on by default. Pass verify_ssl=False only for
+        # instances with a broken/self-signed certificate chain.
+        self.session.verify = verify_ssl
         self.session.headers.update({"Content-Type": "application/json"})
         self.token: str | None = None
         self.neptun_code: str | None = None
         self._auth_data: dict | None = None
-        warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+        if not verify_ssl:
+            warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
     # === Core HTTP ===
 
@@ -36,7 +40,7 @@ class NeptunAPI:
             msg = "; ".join(e.get("errors", [""])[0] for e in errors if e.get("errors"))
             raise NeptunAuthError(msg or "Authentication failed", error_data=data)
         if resp.status_code != 200:
-            raise NeptunRequestError(f"HTTP {resp.status_code}: {resp.text}")
+            raise NeptunRequestError(f"HTTP {resp.status_code}: {resp.text[:500]}")
         data = resp.json().get("data", resp.json())
         self.token = data.get("accessToken")
         self.neptun_code = data.get("neptunCode")
@@ -68,7 +72,7 @@ class NeptunAPI:
             self.authenticate()
             resp = self.session.get(url, params=params, timeout=30)
         if resp.status_code != 200:
-            raise NeptunRequestError(f"HTTP {resp.status_code}: {resp.text}")
+            raise NeptunRequestError(f"HTTP {resp.status_code}: {resp.text[:500]}")
         return resp.json()
 
     def _post(self, endpoint: str, data: dict | None = None) -> dict:
@@ -84,7 +88,7 @@ class NeptunAPI:
         if resp.status_code == 204:
             return {}
         if resp.status_code != 200:
-            raise NeptunRequestError(f"HTTP {resp.status_code}: {resp.text}")
+            raise NeptunRequestError(f"HTTP {resp.status_code}: {resp.text[:500]}")
         return resp.json()
 
     def _put(self, endpoint: str, data: dict | None = None) -> dict:
@@ -100,7 +104,7 @@ class NeptunAPI:
         if resp.status_code == 204:
             return {}
         if resp.status_code != 200:
-            raise NeptunRequestError(f"HTTP {resp.status_code}: {resp.text}")
+            raise NeptunRequestError(f"HTTP {resp.status_code}: {resp.text[:500]}")
         return resp.json()
 
     def _delete(self, endpoint: str, params: dict | None = None) -> dict:
@@ -116,7 +120,7 @@ class NeptunAPI:
         if resp.status_code == 204:
             return {}
         if resp.status_code != 200:
-            raise NeptunRequestError(f"HTTP {resp.status_code}: {resp.text}")
+            raise NeptunRequestError(f"HTTP {resp.status_code}: {resp.text[:500]}")
         return resp.json()
 
     def _data(self, response: dict):
@@ -365,7 +369,7 @@ class NeptunAPI:
     def get_taken_subjects_terms(self) -> list:
         return self._data(self._get("TakenSubjects/Terms"))
 
-    def get_taken_subjects(self, term_id: str, first_row: int = 0, last_row: int = 100, sort: str = "subjectName=asc") -> dict:
+    def get_taken_subjects(self, term_id: str, first_row: int = 0, last_row: int = 100, sort: str = "subjectName=asc") -> list:
         return self._data(self._get("TakenSubjects", params={
             "request.termId": term_id,
             "sortAndPage.firstRow": first_row,
@@ -408,7 +412,7 @@ class NeptunAPI:
     def get_credit_progress(self) -> dict:
         return self._data(self._get("advancement/creditprogress"))
 
-    def get_curriculum_templates(self) -> dict:
+    def get_curriculum_templates(self) -> list:
         return self._data(self._get("Advancement/GetStudentCurriculumTemplates"))
 
     def get_certificate_results(self) -> dict:
@@ -861,13 +865,65 @@ class NeptunAPI:
         return self._data(self._get("SubjectCourse/GetSubjectPrerequirementSubjects", params={"subjectId": subject_id}))
 
     def get_subject_result(self, subject_id: str) -> dict:
+        """Raw SubjectCourse/GetSubjectResult. Note: unavailable on many instances
+        (e.g. Óbuda returns 404). Prefer :meth:`get_subject_grade`."""
         return self._data(self._get("SubjectCourse/GetSubjectResult", params={"subjectId": subject_id}))
 
-    def get_subject_results_list(self, term_id: str) -> dict:
+    def get_subject_results_list(self, term_id: str) -> list:
+        """Raw SubjectCourse/GetSubjectResultsList. Note: returns an empty list on
+        many instances (e.g. Óbuda). Prefer :meth:`get_all_grades`."""
         return self._data(self._get("SubjectCourse/GetSubjectResultsList", params={"termId": term_id}))
 
     def get_subject_results_list_terms(self) -> dict:
         return self._data(self._get("SubjectCourse/GetTermsForSubjectResultsList"))
+
+    def get_subject_grade(self, subject_id: str) -> dict:
+        """Return the student's result for one subject, e.g.
+        ``{"resultValue": 4, "resultName": "Jó", "passed": True, ...}``.
+
+        Reads ``subjectResult`` from SubjectCourse/GetSubjectDetails — the reliable
+        source for grades, including midterm marks (Évközi jegy) and recognised /
+        transfer grades that :meth:`get_subject_result` and
+        :meth:`get_subject_results_list` do not return on many Neptun instances.
+        Returns an empty dict when there is no result yet (e.g. enrolled subjects).
+        """
+        details = self.get_subject_details(subject_id)
+        return details.get("subjectResult") or {}
+
+    def get_all_grades(self) -> list[dict]:
+        """Return the grade for every taken subject across all terms (full transcript).
+
+        Walks every term (:meth:`get_taken_subjects_terms`) and every taken subject,
+        reading each result via :meth:`get_subject_grade`. This is the complete grade
+        record: it includes midterm marks and recognised/transfer grades that the
+        dedicated results endpoints omit. Note: issues one request per subject.
+
+        Each item: ``{term, subjectCode, subjectName, credit, requirementType,
+        grade (int | None), gradeName, passed}``.
+        """
+        out = []
+        for term in self.get_taken_subjects_terms():
+            subjects = self.get_taken_subjects(term.get("value"), last_row=1000)
+            for s in (subjects if isinstance(subjects, list) else []):
+                sid = s.get("subjectId")
+                if not sid:
+                    continue
+                # One failing subject must not abort the whole transcript.
+                try:
+                    result = self.get_subject_grade(sid)
+                except NeptunRequestError:
+                    result = {}
+                out.append({
+                    "term": term.get("text"),
+                    "subjectCode": s.get("subjectCode"),
+                    "subjectName": s.get("subjectName"),
+                    "credit": s.get("subjectCredit"),
+                    "requirementType": s.get("requirementType"),
+                    "grade": result.get("resultValue"),
+                    "gradeName": result.get("resultName"),
+                    "passed": result.get("passed"),
+                })
+        return out
 
     def get_subject_students(self, subject_id: str) -> dict:
         return self._data(self._get("SubjectCourse/GetSubjectStudents", params={"subjectId": subject_id}))
@@ -2378,13 +2434,13 @@ class NeptunAPI:
     def get_number_of_request_forms(self) -> dict:
         return self._data(self._get("RequestForm/GetNumberOfRequestForms"))
 
-    def get_student_request_form_templates(self) -> dict:
+    def get_student_request_form_templates(self) -> list:
         return self._data(self._get("RequestForm/GetStudentRequestFormTemplates"))
 
     def get_student_request_form_template_details(self, template_id: str) -> dict:
         return self._data(self._get("RequestForm/GetStudentRequestFormTemplateDetails", params={"id": template_id}))
 
-    def get_started_request_form_templates(self) -> dict:
+    def get_started_request_form_templates(self) -> list:
         return self._data(self._get("RequestForm/GetStartedRequestFormTemplates"))
 
     def get_started_request_form_template_details(self, template_id: str) -> dict:
@@ -2457,20 +2513,190 @@ class NeptunAPI:
     # REQUEST FORM CORE (36 endpoints)
     # ===================================================================
 
-    def get_student_request_form(self) -> dict:
-        return self._data(self._get("RequestFormCore/GetStudentRequestForm"))
+    def start_request_form(self, template_id: str) -> dict:
+        """Start filling a request form by its template ID (from get_student_request_form_templates).
+        Template IDs are session-specific and must be fetched fresh each session."""
+        return self._data(self._get("RequestFormCore/GetStudentRequestForm", params={"requestFormTemplateId": template_id}))
 
-    def get_request_form_current_page(self, form_id: str) -> dict:
-        return self._data(self._get("RequestFormCore/GetCurrentPage", params={"id": form_id}))
+    def get_request_form_current_page(self) -> dict:
+        """Get the current page of the active request form (session-based, no params needed).
+        Must call start_request_form() first to set the active form context."""
+        return self._data(self._get("RequestFormCore/GetCurrentPage"))
 
-    def save_request_form_page_next(self, data: dict) -> dict:
-        return self._data(self._post("RequestFormCore/SavePageAndStepNext", data=data))
+    @staticmethod
+    def _build_form_data(fields: dict) -> dict:
+        """Convert a flat dict of field values to the jQuery serializeArray format
+        that Neptun's server expects: {"FormData": [{"name": "key", "value": "val"}, ...]}"""
+        return {"FormData": [{"name": k, "value": v} for k, v in fields.items()]}
 
-    def save_request_form_page_prev(self, data: dict) -> dict:
-        return self._data(self._post("RequestFormCore/SavePageAndStepPrevious", data=data))
+    def save_request_form_page_next(self, fields: dict) -> dict:
+        """Save the current page fields and advance to the next page.
+        Pass field values as a flat dict, e.g. {'T_1': 'text', 'D_2': 'dropdown value'}.
+        Returns the server response (data is None when page advances successfully)."""
+        return self._post("RequestFormCore/SavePageAndStepNext", data=self._build_form_data(fields))
 
-    def submit_request_form(self, data: dict) -> dict:
-        return self._data(self._post("RequestFormCore/Submit", data=data))
+    def save_request_form_page_prev(self, fields: dict) -> dict:
+        return self._post("RequestFormCore/SavePageAndStepPrevious", data=self._build_form_data(fields))
+
+    def submit_request_form(self) -> dict:
+        """Submit the active request form. Must be on the preview page (isPreviewPage=True)."""
+        return self._data(self._post("RequestFormCore/Submit", data={}))
+
+    def get_request_form_page_fields(self, page: dict) -> list[dict]:
+        """Extract field info from a page's HTML.
+
+        Returns a list of dicts like:
+            [{'name': 'T_1', 'tag': 'textarea', 'type': None, 'value': '', 'required': False, 'options': None},
+             {'name': 'D_2', 'tag': 'select', 'type': None, 'value': '', 'required': True, 'options': [('val', 'label'), ...]}]
+
+        ``type`` is the input type (e.g. 'hidden', 'text') or None for textarea/select.
+        ``value`` is the server-rendered value= attribute (so callers can preserve
+        hidden/anti-forgery tokens and prefilled values instead of blanking them).
+        """
+        import re, json as _json
+
+        html = page.get('pageHTML', '')
+        js_list = page.get('pageJavascripts', [])
+
+        required_ids = set()
+        for js in js_list:
+            m = re.search(r"RequiredControls\s*=\s*'(\[.*?\])'", js, re.DOTALL)
+            if not m:
+                continue
+            try:
+                for ctrl in _json.loads(m.group(1)):
+                    cid = ctrl.get('ControlID') if isinstance(ctrl, dict) else None
+                    if cid:
+                        required_ids.add(cid)
+            except (ValueError, TypeError):
+                continue
+
+        # (?<![\w-]) anchors each attribute so data-name=/data-type=/data-value=
+        # are not mistaken for the real name=/type=/value= attributes.
+        fields = []
+        for m in re.finditer(r'<(textarea|input|select)([^>]*)>', html, re.IGNORECASE):
+            tag = m.group(1).lower()
+            attrs = m.group(2)
+            name_m = re.search(r'(?<![\w-])name=["\']([^"\']*)["\']', attrs)
+            if not name_m:
+                continue
+            name = name_m.group(1)
+            type_m = re.search(r'(?<![\w-])type=["\']([^"\']*)["\']', attrs)
+            value_m = re.search(r'(?<![\w-])value=["\']([^"\']*)["\']', attrs)
+            field = {
+                'name': name,
+                'tag': tag,
+                'type': type_m.group(1).lower() if type_m else None,
+                'value': value_m.group(1) if value_m else '',
+                'required': name in required_ids,
+                'options': None,
+            }
+            if tag == 'select':
+                sel_m = re.search(
+                    rf'<select[^>]*(?<![\w-])name=["\']{re.escape(name)}["\'][^>]*>(.*?)</select>',
+                    html, re.DOTALL | re.IGNORECASE
+                )
+                if sel_m:
+                    inner = sel_m.group(1)
+                    field['options'] = re.findall(
+                        r'<option[^>]*(?<![\w-])value=["\']([^"\']*)["\'][^>]*>([^<]*)</option>',
+                        inner
+                    )
+                    # Preserve a server pre-selected <option> as the field's value.
+                    sel_opt = re.search(
+                        r'<option[^>]*\bselected\b[^>]*(?<![\w-])value=["\']([^"\']*)["\']'
+                        r'|<option[^>]*(?<![\w-])value=["\']([^"\']*)["\'][^>]*\bselected\b',
+                        inner, re.IGNORECASE
+                    )
+                    if sel_opt:
+                        field['value'] = sel_opt.group(1) or sel_opt.group(2) or ''
+            fields.append(field)
+        return fields
+
+    def fill_and_submit_request_form(self, template_name: str, fields: dict, submit: bool = True) -> dict:
+        """High-level helper: find a form template by name, fill in fields, and submit.
+
+        Args:
+            template_name: Partial match for the template name (e.g. 'OE-0074')
+            fields: Dict of field names to values (e.g. {'T_1': 'justification', 'D_2': 'option'})
+            submit: If True (default), submit the form. If False, stop at preview page.
+
+        Returns:
+            The submission response, or the preview page data if submit=False.
+
+        Raises:
+            NeptunRequestError: If template not found, or page fails to advance after 20 attempts.
+
+        Example:
+            api.fill_and_submit_request_form('OE-0074', {
+                'T_1': 'I request to drop the subject...',
+                'T_4': 'Supporting evidence...'
+            })
+        """
+        def _name_match(t):
+            return template_name.lower() in (t.get('templateName') or '').lower()
+
+        templates = self.get_student_request_form_templates()
+        matches = [t for t in templates if _name_match(t)]
+        if not matches:
+            started = self.get_started_request_form_templates()
+            matches = [t for t in started if _name_match(t)]
+            if not matches:
+                available = ([t.get('templateName') for t in templates]
+                             + [t.get('templateName') for t in started])
+                raise NeptunRequestError(
+                    f"No template found matching '{template_name}'. Available: {available}"
+                )
+
+        template = matches[0]
+        self.start_request_form(template.get('requestFormTemplateId'))
+
+        max_pages = 20
+        prev_identity = None
+        last_notifications: list = []
+        for _ in range(max_pages):
+            page = self.get_request_form_current_page()
+            if page.get('isPreviewPage', False):
+                break
+
+            # If the previous save did not move us to a new page, the form is
+            # stuck (typically a rejected/invalid field). Surface that directly
+            # instead of resubmitting the same page until max_pages. Identity uses
+            # both pageNumber and page content so a repeated pageNumber across
+            # genuinely different pages cannot false-trigger this.
+            identity = (page.get('pageNumber'), hash(page.get('pageHTML') or ''))
+            if identity != (None, hash('')) and identity == prev_identity:
+                raise NeptunRequestError(
+                    f"Request form did not advance past page {page.get('pageNumber')} "
+                    f"(check the field values). Notifications: {last_notifications}"
+                )
+            prev_identity = identity
+
+            # Submit only real input/select/textarea controls (via the field parser).
+            # For any field the caller did not supply, keep the server-rendered
+            # value= (e.g. hidden/anti-forgery tokens, prefilled inputs) rather
+            # than blanking it to ''.
+            page_fields = {
+                f['name']: fields.get(f['name'], f.get('value') or '')
+                for f in self.get_request_form_page_fields(page)
+            }
+
+            response = self.save_request_form_page_next(page_fields)
+
+            # Notification key/shape is instance-dependent; tolerate singular and
+            # plural keys and guard each item is a dict. type==0 means an error.
+            last_notifications = response.get('notification') or response.get('notifications') or []
+            errors = [n for n in last_notifications if isinstance(n, dict) and n.get('type') == 0]
+            if errors:
+                error_msgs = '; '.join(n.get('description', '') for n in errors)
+                raise NeptunRequestError(f"Form validation failed: {error_msgs}")
+        else:
+            raise NeptunRequestError(f"Form did not reach preview page after {max_pages} pages")
+
+        if not submit:
+            return page
+
+        return self.submit_request_form()
 
     def interrupt_request_form(self, data: dict) -> dict:
         return self._data(self._post("RequestFormCore/Interrupt", data=data))

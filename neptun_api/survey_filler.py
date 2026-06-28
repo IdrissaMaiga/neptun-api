@@ -3,6 +3,7 @@
 Requires: pip install playwright && python -m playwright install chromium
 """
 
+import sys
 import time
 from playwright.sync_api import sync_playwright, Page
 
@@ -129,7 +130,10 @@ def fill_all_surveys(
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
-        context = browser.new_context(ignore_https_errors=True)
+        # Follow the client's TLS policy: only ignore cert errors if the caller
+        # explicitly disabled verification (the survey URL carries an auth token).
+        ignore_https = not getattr(neptun_api.session, "verify", True)
+        context = browser.new_context(ignore_https_errors=ignore_https)
         page = context.new_page()
 
         for q in pending:
@@ -160,8 +164,9 @@ def fill_all_surveys(
                 entry["message"] = str(e)
 
             results.append(entry)
+            # stderr, not stdout: stdout is the JSON-RPC channel under MCP stdio.
             print(f"  {'OK' if entry['status'] in ('submitted', 'dry_run_ok') else 'FAIL'}: "
-                  f"{subject} ({course}) - {entry['status']}")
+                  f"{subject} ({course}) - {entry['status']}", file=sys.stderr)
 
         browser.close()
 

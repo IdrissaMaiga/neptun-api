@@ -1,7 +1,7 @@
 from datetime import datetime
 from neptun_api.models import (
     _parse_iso, Training, Message, Term, TakenSubject,
-    ExamSubject, CalendarEvent, FinancialImposition, CalendarTraining,
+    ExamSubject, SubjectGrade, CalendarEvent, FinancialImposition, CalendarTraining,
 )
 
 
@@ -107,6 +107,35 @@ def test_exam_subject_from_dict():
     })
     assert e.subject_name == "Math"
     assert e.subject_code == "MATH01"
+
+
+def test_subject_grade_from_dict():
+    g = SubjectGrade.from_dict({
+        "subjectCode": "NMXMA1EBNF",
+        "subjectName": "Basic Mathematics",
+        "term": "2023/24/1",
+        "credit": 6,
+        "requirementType": "Évközi jegy",
+        "grade": 4,
+        "gradeName": "Jó",
+        "passed": True,
+    })
+    assert g.subject_code == "NMXMA1EBNF"
+    assert g.subject_name == "Basic Mathematics"
+    assert g.term == "2023/24/1"
+    assert g.credit == 6
+    assert g.requirement_type == "Évközi jegy"
+    assert g.grade == 4
+    assert g.grade_name == "Jó"
+    assert g.passed is True
+
+
+def test_subject_grade_from_dict_empty():
+    g = SubjectGrade.from_dict({})
+    assert g.subject_code == ""
+    assert g.grade is None
+    assert g.credit == 0
+    assert g.passed is False
 
 
 def test_calendar_event_from_dict():
