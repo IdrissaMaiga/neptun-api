@@ -6,3 +6,7 @@ __pycache__/
 dist/
 build/
 *.har
+
+# Personal one-off docs (contain real Neptun code / transcript / personal plans)
+docs/my_university_status.md
+docs/masters_scholarship_guide.md

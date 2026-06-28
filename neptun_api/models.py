@@ -96,6 +96,31 @@ class TakenSubject:
 
 
 @dataclass
+class SubjectGrade:
+    subject_code: str
+    subject_name: str
+    term: str
+    credit: int
+    requirement_type: str
+    grade: int | None
+    grade_name: str
+    passed: bool
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SubjectGrade":
+        return cls(
+            subject_code=d.get("subjectCode", ""),
+            subject_name=d.get("subjectName", ""),
+            term=d.get("term", ""),
+            credit=d.get("credit", 0),
+            requirement_type=d.get("requirementType", ""),
+            grade=d.get("grade"),
+            grade_name=d.get("gradeName", ""),
+            passed=d.get("passed", False),
+        )
+
+
+@dataclass
 class ExamSubject:
     subject_id: str
     subject_name: str

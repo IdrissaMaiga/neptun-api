@@ -33,6 +33,17 @@ averages = api.get_term_averages()
 for term in averages["termAveragesByTrainings"]:
     print(f'{term["average"]} avg, {term["creditIndex"]} credit index')
 
+# Get the grade for every subject across all terms (full transcript).
+# This is the reliable way to read grades — including midterm marks and
+# transfer/recognised grades — which get_subject_results_list does not return
+# on many instances. (get_subject_result / get_subject_results_list are kept
+# only as raw endpoint wrappers; prefer these.)
+for g in api.get_all_grades():
+    print(f'{g["term"]} [{g["subjectCode"]}] {g["subjectName"]}: {g["grade"]} ({g["gradeName"]})')
+
+# Or one subject's result by its subject id
+result = api.get_subject_grade(subject_id)   # {"resultValue": 4, "resultName": "Jó", "passed": True}
+
 # Get current courses
 terms = api.get_taken_subjects_terms()
 subjects = api.get_taken_subjects(terms[1]["value"])  # [1] skips "0. felev"
@@ -163,25 +174,29 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-### Available MCP Tools (26)
+There is also an installed console command equivalent to `python -m neptun_api`:
+```bash
+neptun-mcp --username YOUR_CODE --password YOUR_PASS
+```
+
+### Available MCP Tools (23)
 
 | Tool | Description |
 |---|---|
 | `get_student_info` | Student profile, neptun code, training |
 | `get_dashboard_data` | GPA, credit progress, unread messages |
 | `get_term_averages` | GPA and credit index per semester |
+| `get_all_grades` | Grade for every subject across all terms (full transcript) |
+| `get_subject_grade` | Result/grade for one subject by ID |
 | `get_taken_subjects` | Subjects taken in a term |
-| `get_exam_list` | Available exams |
-| `register_for_exam` | Register for an exam |
-| `get_received_messages` | Read inbox messages |
-| `send_message` | Send a message |
+| `get_exam_results` / `get_exam_results_terms` | Exam results per term |
+| `get_exams_list` | Available exams for a subject in a term |
+| `get_received_messages` / `get_message_detail` | Read inbox / a thread |
 | `get_calendar_events` | Calendar events by date range |
-| `get_financial_impositions` | Tuition and fee obligations |
-| `get_pending_surveys` | Unfilled semester surveys |
-| `fill_all_surveys` | Auto-fill all surveys (Playwright) |
-| `call_method` | Call any of the 1,100+ API methods by name |
-| `list_methods` | Search/discover all available methods |
-| *...and 12 more* | Timetable, courses, documents, registration |
+| `get_financial_impositions` / `get_financial_payments` | Fees and transactions |
+| `get_pending_surveys` / `fill_all_surveys` | Surveys (Playwright auto-fill) |
+| `call_method` / `list_methods` | Call/discover any of the 1,100+ API methods |
+| *...and more* | Curriculum, documents, surveys |
 
 ## Authentication
 
@@ -239,8 +254,8 @@ api = NeptunAPI("code", "pass", base_url="https://neptun.elte.hu/ujhallgato/api/
 pip install -e ".[dev]"
 pytest
 
-# Live integration test (requires real credentials in .env)
-python test_live_comprehensive.py
+# Live integration test (requires NEPTUN_USERNAME / NEPTUN_PASSWORD env vars)
+NEPTUN_USERNAME=YOUR_CODE NEPTUN_PASSWORD=YOUR_PASS python test_live_comprehensive.py
 ```
 
 ## Project Structure
@@ -255,8 +270,12 @@ neptun_api/
   models.py          # Dataclasses for common response types
   exceptions.py      # NeptunAuthError, NeptunRequestError
 tests/
-  test_client.py     # 22 unit tests
-  test_models.py     # 17 model tests
+  test_client.py      # client unit tests (incl. grade API)
+  test_models.py      # dataclass model tests
+  test_mcp_server.py  # guards MCP tools against client drift
+scripts/             # standalone utilities (see scripts/README.md)
+docs/
+  request_forms.md   # guide to the request-form (petition) endpoints
 ```
 
 ## License

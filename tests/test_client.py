@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 from datetime import datetime
 from neptun_api.client import NeptunAPI
 from neptun_api.exceptions import NeptunAuthError, NeptunRequestError
@@ -131,6 +131,36 @@ class TestEndpoints:
         }))
         result = authed_api.get_taken_subjects("term-1")
         assert result == [{"subjectName": "DB"}]
+
+    def test_get_subject_grade(self, authed_api):
+        authed_api.session.get = MagicMock(return_value=_mock_response(200, {
+            "data": {"subjectResult": {"resultValue": 4, "resultName": "Jó", "passed": True}}
+        }))
+        result = authed_api.get_subject_grade("subj-1")
+        assert result["resultValue"] == 4
+        assert result["passed"] is True
+
+    def test_get_subject_grade_empty_when_no_result(self, authed_api):
+        authed_api.session.get = MagicMock(return_value=_mock_response(200, {
+            "data": {"subjectName": "Thesis", "subjectResult": None}
+        }))
+        assert authed_api.get_subject_grade("subj-2") == {}
+
+    def test_get_all_grades(self, authed_api):
+        authed_api.session.get = MagicMock(side_effect=[
+            _mock_response(200, {"data": [{"value": "t1", "text": "2023/24/1"}]}),       # taken_subjects_terms
+            _mock_response(200, {"data": [{"subjectId": "s1", "subjectCode": "NMXMA1EBNF",
+                                            "subjectName": "Basic Mathematics", "subjectCredit": 6,
+                                            "requirementType": "Évközi jegy"}]}),         # taken_subjects(t1)
+            _mock_response(200, {"data": {"subjectResult": {"resultValue": 4, "resultName": "Jó",
+                                                            "passed": True}}}),           # subject_details(s1)
+        ])
+        grades = authed_api.get_all_grades()
+        assert len(grades) == 1
+        assert grades[0]["subjectCode"] == "NMXMA1EBNF"
+        assert grades[0]["term"] == "2023/24/1"
+        assert grades[0]["grade"] == 4
+        assert grades[0]["gradeName"] == "Jó"
 
     def test_get_calendar_events(self, authed_api):
         authed_api.session.get = MagicMock(return_value=_mock_response(200, {"data": []}))

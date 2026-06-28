@@ -1,13 +1,13 @@
 from .client import NeptunAPI
 from .exceptions import NeptunAPIError, NeptunAuthError, NeptunRequestError
 from .models import (
-    Training, Message, Term, TakenSubject, ExamSubject,
+    Training, Message, Term, TakenSubject, ExamSubject, SubjectGrade,
     CalendarEvent, FinancialImposition, CalendarTraining,
 )
 
 __all__ = [
     "NeptunAPI", "NeptunAPIError", "NeptunAuthError", "NeptunRequestError",
-    "Training", "Message", "Term", "TakenSubject", "ExamSubject",
+    "Training", "Message", "Term", "TakenSubject", "ExamSubject", "SubjectGrade",
     "CalendarEvent", "FinancialImposition", "CalendarTraining",
     "fill_all_surveys",
 ]
