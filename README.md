@@ -255,7 +255,7 @@ pip install -e ".[dev]"
 pytest
 
 # Live integration test (requires NEPTUN_USERNAME / NEPTUN_PASSWORD env vars)
-NEPTUN_USERNAME=YOUR_CODE NEPTUN_PASSWORD=YOUR_PASS python test_live_comprehensive.py
+NEPTUN_USERNAME=YOUR_CODE NEPTUN_PASSWORD=YOUR_PASS python tests/test_live_comprehensive.py
 ```
 
 ## Project Structure
@@ -270,12 +270,12 @@ neptun_api/
   models.py          # Dataclasses for common response types
   exceptions.py      # NeptunAuthError, NeptunRequestError
 tests/
-  test_client.py      # client unit tests (incl. grade API)
-  test_models.py      # dataclass model tests
-  test_mcp_server.py  # guards MCP tools against client drift
-scripts/             # standalone utilities (see scripts/README.md)
+  test_client.py             # client unit tests (incl. grade API)
+  test_models.py             # dataclass model tests
+  test_mcp_server.py         # guards MCP tools against client drift
+  test_live_comprehensive.py # live smoke test (run directly, needs creds)
 docs/
-  request_forms.md   # guide to the request-form (petition) endpoints
+  request_forms.md           # guide to the request-form (petition) endpoints
 ```
 
 ## License
