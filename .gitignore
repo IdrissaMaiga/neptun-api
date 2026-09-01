@@ -10,3 +10,6 @@ build/
 # Personal one-off docs (contain real Neptun code / transcript / personal plans)
 docs/my_university_status.md
 docs/masters_scholarship_guide.md
+
+# Personal grade/curriculum tooling (local paths, personal data)
+scripts/
