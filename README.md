@@ -1,5 +1,9 @@
 # neptun-api
 
+![Python](https://img.shields.io/badge/Python_3.11+-3776AB?style=flat-square&logo=python&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+![Endpoints](https://img.shields.io/badge/Endpoints-1,100+-blue?style=flat-square)
+
 The most complete Python API wrapper for the Hungarian **Neptun** university system. Reverse-engineered from the Angular web client, covering **1,100+ endpoints** across 75+ controllers.
 
 Built and tested against [Obuda University](https://neptun.uni-obuda.hu), but should work with any Neptun instance by changing the base URL. Instances that require two-factor login (e.g. University of Debrecen) are supported, see [Two-factor authentication](#two-factor-authentication).
