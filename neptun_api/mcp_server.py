@@ -7,7 +7,8 @@ Run with SSE (for remote / port-forwarded access):
     python -m neptun_api.mcp_server --username CODE --password PASS --transport sse --port 8000
 
 Environment variables are also supported:
-    NEPTUN_USERNAME, NEPTUN_PASSWORD, NEPTUN_BASE_URL
+    NEPTUN_USERNAME, NEPTUN_PASSWORD, NEPTUN_BASE_URL,
+    NEPTUN_TOTP_SECRET (only for instances with two-factor login, e.g. Debrecen)
 """
 
 import argparse
@@ -36,9 +37,10 @@ def _get_api() -> NeptunAPI:
         username = os.environ.get("NEPTUN_USERNAME", "")
         password = os.environ.get("NEPTUN_PASSWORD", "")
         base_url = os.environ.get("NEPTUN_BASE_URL", "https://neptun.uni-obuda.hu/ujhallgato/api/")
+        totp_secret = os.environ.get("NEPTUN_TOTP_SECRET") or None
         if not username or not password:
             raise RuntimeError("Set NEPTUN_USERNAME and NEPTUN_PASSWORD environment variables or pass --username/--password")
-        _api = NeptunAPI(username, password, base_url=base_url)
+        _api = NeptunAPI(username, password, base_url=base_url, totp_secret=totp_secret)
         _api.authenticate()
     return _api
 
@@ -431,6 +433,7 @@ def main():
     parser.add_argument("--username", help="Neptun code (or set NEPTUN_USERNAME)")
     parser.add_argument("--password", help="Neptun password (or set NEPTUN_PASSWORD)")
     parser.add_argument("--base-url", help="Neptun API base URL (or set NEPTUN_BASE_URL)")
+    parser.add_argument("--totp-secret", help="Base32 TOTP secret for two-factor instances (or set NEPTUN_TOTP_SECRET)")
     parser.add_argument("--transport", choices=["stdio", "sse", "streamable-http"], default="stdio")
     parser.add_argument(
         "--host", default="127.0.0.1",
@@ -448,6 +451,8 @@ def main():
         os.environ["NEPTUN_PASSWORD"] = args.password
     if args.base_url:
         os.environ["NEPTUN_BASE_URL"] = args.base_url
+    if args.totp_secret:
+        os.environ["NEPTUN_TOTP_SECRET"] = args.totp_secret
 
     if args.transport != "stdio" and args.host not in ("127.0.0.1", "localhost", "::1"):
         import sys

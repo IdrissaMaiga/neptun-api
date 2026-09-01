@@ -1,19 +1,56 @@
+import base64
+import hashlib
+import hmac
+import struct
+import time
 import requests
 import warnings
 from datetime import datetime
+from typing import Callable
 
-from .exceptions import NeptunAuthError, NeptunRequestError
+from .exceptions import (
+    NeptunAuthError, NeptunCaptchaRequired, NeptunRequestError, NeptunTwoFactorRequired,
+)
 
 OBUDA_BASE = "https://neptun.uni-obuda.hu/ujhallgato/api/"
 
 
+def generate_totp(secret: str, digits: int = 6, period: int = 30, at: float | None = None) -> str:
+    """Generate an RFC 6238 time-based one-time password (HMAC-SHA1).
+
+    ``secret`` is the base32 key behind the authenticator QR code; spaces,
+    dashes and case are ignored. Neptun uses the Google Authenticator defaults
+    (6 digits, 30-second period, SHA-1), so no third-party library is needed.
+    """
+    key = secret.replace(" ", "").replace("-", "").upper()
+    key += "=" * (-len(key) % 8)
+    try:
+        key_bytes = base64.b32decode(key)
+    except ValueError as e:
+        raise ValueError(f"totp_secret is not valid base32: {e}") from None
+    counter = int((time.time() if at is None else at) // period)
+    digest = hmac.new(key_bytes, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    number = struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    return str(number % (10 ** digits)).zfill(digits)
+
+
 class NeptunAPI:
     def __init__(self, username: str, password: str, base_url: str = OBUDA_BASE,
-                 lcid: int = 1038, verify_ssl: bool = True):
+                 lcid: int = 1038, verify_ssl: bool = True,
+                 totp_secret: str | None = None,
+                 two_factor_callback: Callable[[], str] | None = None):
         self.username = username
         self.password = password
         self.base_url = base_url.rstrip("/") + "/"
         self.lcid = lcid
+        # Two-factor login (required by e.g. University of Debrecen). Give either
+        # the base32 TOTP secret behind the authenticator QR code, so codes are
+        # generated automatically (also on re-authentication after a 401), or a
+        # callback returning the current 6-digit code, e.g.
+        # two_factor_callback=lambda: input("Authenticator code: ").
+        self.totp_secret = totp_secret.replace(" ", "") if totp_secret else None
+        self.two_factor_callback = two_factor_callback
         self.session = requests.Session()
         # TLS verification is on by default. Pass verify_ssl=False only for
         # instances with a broken/self-signed certificate chain.
@@ -27,9 +64,40 @@ class NeptunAPI:
 
     # === Core HTTP ===
 
-    def authenticate(self) -> dict:
-        url = f"{self.base_url}Account/Authenticate"
+    def authenticate(self, totp_code: str | None = None) -> dict:
+        """Log in and store the bearer token.
+
+        Instances with two-factor login (e.g. University of Debrecen) answer the
+        first request with HTTP 202 and ``isTwoFactorRequired: true`` instead of
+        a token. The official web client then re-sends the same login with the
+        6-digit authenticator code in a ``token`` field, and so does this method.
+        The code comes from, in order: the ``totp_code`` argument, the
+        ``totp_secret`` given to the constructor (generated on the fly), or
+        ``two_factor_callback``. With none of those, :class:`NeptunTwoFactorRequired`
+        is raised.
+        """
         payload = {"userName": self.username, "password": self.password, "lcid": self.lcid}
+        data = self._post_authenticate(payload)
+        if self._needs_second_factor(data):
+            code = self._resolve_two_factor_code(totp_code, data)
+            data = self._post_authenticate({**payload, "token": code})
+            if self._needs_second_factor(data):
+                raise NeptunAuthError(
+                    "Neptun rejected the two-factor code. Codes are valid for 30 seconds "
+                    "only; check the code and the clock of the device that generated it.",
+                    error_data=data,
+                )
+        token = data.get("accessToken")
+        if not token:
+            raise NeptunAuthError("Neptun did not return an access token", error_data=data)
+        self.token = token
+        self.neptun_code = data.get("neptunCode")
+        self._auth_data = data
+        self.session.headers.update({"Authorization": f"Bearer {self.token}"})
+        return data
+
+    def _post_authenticate(self, payload: dict) -> dict:
+        url = f"{self.base_url}Account/Authenticate"
         try:
             resp = self.session.post(url, json=payload, timeout=30)
         except requests.RequestException as e:
@@ -39,14 +107,42 @@ class NeptunAPI:
             errors = data.get("modelStateErrors", [])
             msg = "; ".join(e.get("errors", [""])[0] for e in errors if e.get("errors"))
             raise NeptunAuthError(msg or "Authentication failed", error_data=data)
-        if resp.status_code != 200:
+        # 200 = logged in. 202 = credentials accepted but the server wants more
+        # (a captcha and/or a two-factor code); the body carries the flags.
+        if resp.status_code not in (200, 202):
             raise NeptunRequestError(f"HTTP {resp.status_code}: {resp.text[:500]}")
-        data = resp.json().get("data", resp.json())
-        self.token = data.get("accessToken")
-        self.neptun_code = data.get("neptunCode")
-        self._auth_data = data
-        self.session.headers.update({"Authorization": f"Bearer {self.token}"})
+        body = resp.json()
+        data = body.get("data", body) if isinstance(body, dict) else {}
+        if data.get("isCaptchaRequired") and not data.get("accessToken"):
+            raise NeptunCaptchaRequired(
+                "Neptun wants a captcha solved before it logs this account in "
+                "(this usually follows several failed login attempts). Log in once "
+                "through the Neptun website, solve the captcha there, then retry.",
+                error_data=data,
+            )
         return data
+
+    @staticmethod
+    def _needs_second_factor(data: dict) -> bool:
+        return bool(data.get("isTwoFactorRequired")) and not data.get("accessToken")
+
+    def _resolve_two_factor_code(self, explicit: str | None, data: dict) -> str:
+        if explicit:
+            return str(explicit).strip()
+        if self.totp_secret:
+            return generate_totp(self.totp_secret)
+        if self.two_factor_callback is not None:
+            code = self.two_factor_callback()
+            if code:
+                return str(code).strip()
+        raise NeptunTwoFactorRequired(
+            "This Neptun instance requires two-factor authentication. Pass the 6-digit "
+            "code from your authenticator app with authenticate(totp_code='123456'), or "
+            "create NeptunAPI(..., totp_secret='BASE32SECRET') or "
+            "NeptunAPI(..., two_factor_callback=lambda: input('Code: ')) so the client "
+            "can log in on its own.",
+            error_data=data,
+        )
 
     def refresh_token(self) -> dict:
         data = self._post("Account/GetNewTokens")
