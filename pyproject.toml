@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neptun-api"
-version = "0.1.0"
+version = "0.1.1"
 description = "The most complete Python wrapper for the Hungarian Neptun university system API"
 readme = "README.md"
 license = "MIT"

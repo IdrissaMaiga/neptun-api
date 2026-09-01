@@ -10,3 +10,15 @@ class NeptunAuthError(NeptunAPIError):
 
 class NeptunRequestError(NeptunAPIError):
     pass
+
+
+class NeptunTwoFactorRequired(NeptunAuthError):
+    """Login needs a second factor (6-digit authenticator code) and none was available.
+
+    Pass ``authenticate(totp_code=...)``, or construct ``NeptunAPI`` with
+    ``totp_secret=`` / ``two_factor_callback=`` so the client can supply it.
+    """
+
+
+class NeptunCaptchaRequired(NeptunAuthError):
+    """Login needs a captcha to be solved first (usually after repeated failed logins)."""

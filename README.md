@@ -2,7 +2,7 @@
 
 The most complete Python API wrapper for the Hungarian **Neptun** university system. Reverse-engineered from the Angular web client, covering **1,100+ endpoints** across 75+ controllers.
 
-Built and tested against [Obuda University](https://neptun.uni-obuda.hu), but should work with any Neptun instance by changing the base URL.
+Built and tested against [Obuda University](https://neptun.uni-obuda.hu), but should work with any Neptun instance by changing the base URL. Instances that require two-factor login (e.g. University of Debrecen) are supported, see [Two-factor authentication](#two-factor-authentication).
 
 ## Installation
 
@@ -153,6 +153,7 @@ Or use environment variables:
 export NEPTUN_USERNAME=YOUR_CODE
 export NEPTUN_PASSWORD=YOUR_PASS
 export NEPTUN_BASE_URL=https://neptun.uni-obuda.hu/ujhallgato/api/
+export NEPTUN_TOTP_SECRET=BASE32SECRET   # only for two-factor instances (see below)
 python -m neptun_api --transport sse --port 8000
 ```
 
@@ -212,6 +213,36 @@ api.refresh_token()
 # Auto-retry on 401 is built in — you don't need to handle token expiry
 ```
 
+### Two-factor authentication
+
+Some universities (for example the **University of Debrecen**) require an authenticator-app code on every login. Their Neptun answers the first login with **HTTP 202** and `"isTwoFactorRequired": true` instead of a token; the official web client then re-sends the login with the 6-digit code in a `token` field. `authenticate()` does the same, and you have three ways to supply the code:
+
+```python
+from neptun_api import NeptunAPI, NeptunTwoFactorRequired
+
+DEBRECEN = "https://www-h-ng.neptun.unideb.hu/hallgato_ng/api/"
+
+# 1. Pass the code from your authenticator app for this login only
+api = NeptunAPI("code", "password", base_url=DEBRECEN)
+api.authenticate(totp_code=input("Authenticator code: "))
+
+# 2. Ask for it whenever the client needs to (re-)authenticate
+api = NeptunAPI("code", "password", base_url=DEBRECEN,
+                two_factor_callback=lambda: input("Authenticator code: "))
+api.authenticate()
+
+# 3. Fully unattended: give the TOTP secret and codes are generated for you
+#    (this is the base32 key behind the QR code shown when you registered the
+#    authenticator — most apps let you view or export it; otherwise delete the
+#    key in Neptun and register it again, noting the key this time).
+api = NeptunAPI("code", "password", base_url=DEBRECEN, totp_secret="JBSWY3DPEHPK3PXP")
+api.authenticate()
+```
+
+If none of these is provided and the instance asks for a second factor, `authenticate()` raises `NeptunTwoFactorRequired` (a `NeptunAuthError`). A wrong or expired code raises `NeptunAuthError`; after repeated failed logins Neptun may also demand a captcha, which surfaces as `NeptunCaptchaRequired` — log in once through the website to clear it.
+
+Option 1 only covers the initial login: if the session later expires (401) the client cannot re-authenticate without a fresh code, so long-running scripts should use option 2 or 3. `generate_totp(secret)` is exported if you need the current code yourself; it is a dependency-free RFC 6238 implementation (6 digits, 30 s, SHA-1, the Google Authenticator defaults Neptun uses).
+
 ## Raw Requests
 
 For endpoints not yet wrapped, use the raw methods:
@@ -242,7 +273,12 @@ api = NeptunAPI("code", "pass", base_url="https://neptun.bme.hu/ujhallgato/api/"
 # ELTE
 api = NeptunAPI("code", "pass", base_url="https://neptun.elte.hu/ujhallgato/api/")
 
-# Any Neptun instance — just find the /ujhallgato/api/ path
+# University of Debrecen (two-factor login, see Authentication above)
+api = NeptunAPI("code", "pass", base_url="https://www-h-ng.neptun.unideb.hu/hallgato_ng/api/",
+                two_factor_callback=lambda: input("Authenticator code: "))
+
+# Any Neptun instance — take the URL of the new student web (it ends in
+# /ujhallgato/ or /hallgato_ng/ depending on the university) and append api/
 ```
 
 > **Note:** Not all universities may have the same endpoints enabled. Some features (booking, theses, practice) may return 403 depending on your institution's configuration.

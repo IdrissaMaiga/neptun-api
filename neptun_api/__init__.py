@@ -1,5 +1,8 @@
-from .client import NeptunAPI
-from .exceptions import NeptunAPIError, NeptunAuthError, NeptunRequestError
+from .client import NeptunAPI, generate_totp
+from .exceptions import (
+    NeptunAPIError, NeptunAuthError, NeptunRequestError,
+    NeptunTwoFactorRequired, NeptunCaptchaRequired,
+)
 from .models import (
     Training, Message, Term, TakenSubject, ExamSubject, SubjectGrade,
     CalendarEvent, FinancialImposition, CalendarTraining,
@@ -7,6 +10,7 @@ from .models import (
 
 __all__ = [
     "NeptunAPI", "NeptunAPIError", "NeptunAuthError", "NeptunRequestError",
+    "NeptunTwoFactorRequired", "NeptunCaptchaRequired", "generate_totp",
     "Training", "Message", "Term", "TakenSubject", "ExamSubject", "SubjectGrade",
     "CalendarEvent", "FinancialImposition", "CalendarTraining",
     "fill_all_surveys",
@@ -15,4 +19,4 @@ __all__ = [
 def fill_all_surveys(*args, **kwargs):
     from .survey_filler import fill_all_surveys as _fill
     return _fill(*args, **kwargs)
-__version__ = "0.1.0"
+__version__ = "0.1.1"
